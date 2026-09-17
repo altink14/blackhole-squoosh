@@ -1,5 +1,7 @@
 # blackhole
 
+**[blackhole-squoosh.vercel.app](https://blackhole-squoosh.vercel.app)**
+
 Squoosh-grade image compression that runs entirely in your browser, wrapped
 around a raytraced Schwarzschild black hole. Drop images into the singularity,
 get smaller files back. Nothing is ever uploaded.
@@ -80,19 +82,25 @@ there is nothing to configure.
    canvas is flattened onto white first, since JPEG has no alpha channel and
    would otherwise render transparent pixels as black.
 
-Measured on a 3.75 MB, 1600×1200 PNG (synthetic, heavy per-pixel noise) at
-quality 75 / effort 4:
+Measured on the deployed build: a 3.27 MB, 2400×1600 photographic PNG at
+quality 75 / effort 4.
 
 | Format         | Output   | Saved  | Time   |
 | -------------- | -------- | ------ | ------ |
-| JPEG (MozJPEG) | 168.9 KB | −95.6% | 225 ms |
-| WebP (libwebp) | 285.4 KB | −92.6% | 244 ms |
-| AVIF (libavif) | 427.4 KB | −88.9% | 2.1 s  |
-| PNG (OxiPNG)   | 2.38 MB  | −36.7% | 2.6 s  |
+| AVIF (libavif) | 26.0 KB  | −99.2% | 9.1 s  |
+| WebP (libwebp) | 30.6 KB  | −99.1% | 0.7 s  |
+| JPEG (MozJPEG) | 53.3 KB  | −98.4% | 0.6 s  |
+| PNG (OxiPNG)   | 1.60 MB  | −51.2% | 9.1 s  |
 
-AVIF trailing WebP is an artifact of the test image: uniform pixel noise is
-close to the worst case for AVIF at speed 6. On real photographs the ordering
-inverts, which is the usual reason to reach for it.
+Content matters more than the ranking suggests. The same table built from an
+image of uniform per-pixel noise puts AVIF *last* rather than first — noise is
+close to its worst case at speed 6, and it is the only one of the four with no
+cheap way to give up on a region. Benchmark against images that look like
+yours, not against a gradient or a noise field.
+
+AVIF's ~9 s is the cost of running single-threaded (see below). Lower the
+effort slider, which maps straight to libavif's speed parameter, if encode
+latency matters more than the last few kilobytes.
 
 `lib/compressor.ts` keeps a small pool of these workers. The pool is
 deliberately narrow — each worker holds its own codec heaps, so wide
