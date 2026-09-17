@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# WASM codec binaries staged out of node_modules by scripts/copy-codecs.mjs
+/public/codecs
+
+# local dev logs
+/build.log
+/dev.log
+/start.log
