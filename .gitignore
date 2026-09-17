@@ -47,3 +47,6 @@ next-env.d.ts
 /build.log
 /dev.log
 /start.log
+
+# scratch commit-message files
+/.cm.tmp
