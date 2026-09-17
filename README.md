@@ -82,15 +82,15 @@ there is nothing to configure.
    canvas is flattened onto white first, since JPEG has no alpha channel and
    would otherwise render transparent pixels as black.
 
-Measured on the deployed build: a 3.27 MB, 2400×1600 photographic PNG at
-quality 75 / effort 4.
+Measured on the deployed build: a 3.78 MB, 2400×1600 photographic PNG at
+quality 75 / effort 4 (the defaults).
 
 | Format         | Output   | Saved  | Time   |
 | -------------- | -------- | ------ | ------ |
-| AVIF (libavif) | 26.0 KB  | −99.2% | 9.1 s  |
-| WebP (libwebp) | 30.6 KB  | −99.1% | 0.7 s  |
-| JPEG (MozJPEG) | 53.3 KB  | −98.4% | 0.6 s  |
-| PNG (OxiPNG)   | 1.60 MB  | −51.2% | 9.1 s  |
+| AVIF (libavif) | 27.9 KB  | −99.3% | 1.3 s  |
+| WebP (libwebp) | 29.2 KB  | −99.2% | 0.26 s |
+| JPEG (MozJPEG) | 52.2 KB  | −98.6% | 0.28 s |
+| PNG (OxiPNG)   | 1.77 MB  | −53.0% | 3.6 s  |
 
 Content matters more than the ranking suggests. The same table built from an
 image of uniform per-pixel noise puts AVIF *last* rather than first — noise is
