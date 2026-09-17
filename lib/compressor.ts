@@ -2,6 +2,7 @@ import type {
   CompressRequest,
   CompressResponse,
   EncodeSettings,
+  OutputFormat,
 } from "./codecs";
 
 type Resolver = (response: CompressResponse) => void;
@@ -72,8 +73,29 @@ export class CompressorPool {
     worker.postMessage(entry.request);
   }
 
+  /**
+   * Instantiates a codec before any image is queued. Cheap for the small
+   * encoders and worth several seconds for AVIF, whose binary is ~3.5 MB and
+   * used to be downloaded and compiled inside the first encode.
+   *
+   * Fire-and-forget by design: the workers send no reply, so a warm-up can
+   * never occupy a job slot or delay a real encode behind itself.
+   */
+  warm(format: OutputFormat) {
+    if (this.disposed) return;
+    if (this.workers.length === 0) this.free.push(this.spawn());
+    for (const worker of this.workers) {
+      worker.postMessage({ kind: "warm", format });
+    }
+  }
+
   run(file: File, settings: EncodeSettings): Promise<CompressResponse> {
-    const request: CompressRequest = { id: this.nextId++, file, settings };
+    const request: CompressRequest = {
+      kind: "compress",
+      id: this.nextId++,
+      file,
+      settings,
+    };
 
     return new Promise<CompressResponse>((resolve) => {
       if (this.disposed) {

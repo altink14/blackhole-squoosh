@@ -48,6 +48,15 @@ export function ImageRow({ item, onRemove, onCompare }: ImageRowProps) {
               <TriangleAlert className="size-3" />
               {item.error}
             </span>
+          ) : item.status === "working" ? (
+            // Checked before `result`, because a re-encode keeps the previous
+            // result around. Showing it would report a stale size as though it
+            // were the new one, then silently swap the number underneath.
+            <>
+              {formatBytes(item.originalSize)}
+              <span className="mx-1.5 opacity-50">&rarr;</span>
+              <span className="opacity-60">collapsing…</span>
+            </>
           ) : result ? (
             <>
               {formatBytes(item.originalSize)}
@@ -65,9 +74,7 @@ export function ImageRow({ item, onRemove, onCompare }: ImageRowProps) {
             <>
               {formatBytes(item.originalSize)}
               <span className="mx-1.5 opacity-50">&rarr;</span>
-              <span className="opacity-60">
-                {item.status === "working" ? "collapsing…" : "queued"}
-              </span>
+              <span className="opacity-60">queued</span>
             </>
           )}
         </p>

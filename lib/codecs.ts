@@ -74,11 +74,72 @@ export const ACCEPTED_TYPES = [
   "image/bmp",
 ];
 
+/**
+ * The heavy asset behind each encoder, for warming the HTTP cache.
+ *
+ * Instantiating a codec costs memory in every worker that does it, but merely
+ * having the bytes cached costs nothing and is the dominant term: AVIF's binary
+ * is ~3.5 MB, roughly an order of magnitude more than the others combined.
+ * Since the format bar only exists once images are queued, a switch to AVIF
+ * would otherwise always pay that download at the worst possible moment.
+ */
+const CODEC_ASSETS: Record<OutputFormat, string[]> = {
+  avif: ["/codecs/avif_enc.js", "/codecs/avif_enc.wasm"],
+  webp: ["/codecs/webp_enc_simd.wasm"],
+  jpeg: ["/codecs/mozjpeg_enc.wasm"],
+  png: ["/codecs/squoosh_oxipng_bg.wasm"],
+};
+
+const prefetched = new Set<string>();
+
+/** Pulls a codec's bytes into cache. Idempotent, fire-and-forget. */
+export function prefetchCodec(format: OutputFormat) {
+  if (typeof fetch !== "function") return;
+
+  for (const url of CODEC_ASSETS[format]) {
+    if (prefetched.has(url)) continue;
+    prefetched.add(url);
+
+    const request = fetch(url, {
+      priority: "low",
+      credentials: "same-origin",
+    } as RequestInit);
+
+    const done = url.endsWith(".wasm")
+      ? // compileStreaming, not a bare fetch: it stores the compiled module in
+        // the engine's wasm code cache as well as filling the HTTP cache, so
+        // the later instantiate skips both the download and the compile. The
+        // module itself is discarded; only the caches matter.
+        WebAssembly.compileStreaming(request)
+      : // A fetch whose body is never read can be cancelled before it
+        // finishes, which defeats the whole point. Drain it.
+        request.then((response) => response.arrayBuffer());
+
+    void done.catch(() => {
+      // Losing a prefetch only means the encode pays for it later.
+      prefetched.delete(url);
+    });
+  }
+}
+
 export interface CompressRequest {
+  kind: "compress";
   id: number;
   file: File;
   settings: EncodeSettings;
 }
+
+/**
+ * Fire-and-forget: tells a worker to fetch and instantiate a codec before any
+ * image needs it. The worker sends no reply, so this never occupies a slot in
+ * the pool's job table.
+ */
+export interface WarmRequest {
+  kind: "warm";
+  format: OutputFormat;
+}
+
+export type WorkerRequest = CompressRequest | WarmRequest;
 
 export interface CompressSuccess {
   id: number;
