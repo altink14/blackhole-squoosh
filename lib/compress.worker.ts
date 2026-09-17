@@ -133,6 +133,41 @@ async function warm(format: OutputFormat) {
   }
 }
 
+/**
+ * OxiPNG's levels are not monotonic in output size, so this is a measured
+ * table rather than arithmetic. On a 2400x1600 PNG:
+ *
+ *   level 1 -> 2.05 MB in 1.4s
+ *   level 2 -> 1.77 MB in 3.4s
+ *   level 3 -> 1.80 MB in 8.5s   <- slower AND larger than level 2
+ *
+ * Level 3 tries filter/strategy combinations that can land worse than level 2
+ * while costing 2.5x the time, so the default effort maps to 2 and the higher
+ * levels are reserved for people who deliberately ask for them.
+ */
+const OXIPNG_LEVEL_BY_EFFORT = [1, 1, 2, 2, 2, 3, 3, 4, 4, 5, 6];
+
+function oxipngLevel(effort: number) {
+  return OXIPNG_LEVEL_BY_EFFORT[Math.min(10, Math.max(0, Math.round(effort)))];
+}
+
+/** Reads width, height, bit depth and colour type out of a PNG's IHDR chunk. */
+function readPngHeader(bytes: Uint8Array) {
+  const SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10];
+  if (bytes.length < 24) return null;
+  for (let i = 0; i < SIGNATURE.length; i++) {
+    if (bytes[i] !== SIGNATURE[i]) return null;
+  }
+  if (String.fromCharCode(bytes[12], bytes[13], bytes[14], bytes[15]) !== "IHDR") {
+    return null;
+  }
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const width = view.getUint32(16);
+  const height = view.getUint32(20);
+  if (width === 0 || height === 0) return null;
+  return { width, height, bitDepth: bytes[24], colourType: bytes[25] };
+}
+
 function targetSize(
   width: number,
   height: number,
@@ -229,12 +264,11 @@ async function encode(
     }
     case "png": {
       const mod = await loadOxipng();
-      const level = Math.min(6, Math.max(1, Math.round(1 + effort * 0.5)));
       const out = mod.optimise_raw(
         data.data,
         data.width,
         data.height,
-        level,
+        oxipngLevel(effort),
         false,
         true
       );
@@ -243,12 +277,64 @@ async function encode(
   }
 }
 
+/**
+ * Optimises a 16-bit PNG from its original bytes, bypassing the canvas.
+ *
+ * Narrow on purpose. The obvious generalisation -- routing every PNG-to-PNG
+ * job through OxiPNG's own decoder -- measures *slower* (3.9s vs 3.4s on a
+ * 2400x1600 image) because OxiPNG then decodes the file in wasm instead of
+ * reusing the browser's native decoder, and it produces an identical result.
+ *
+ * At 16 bits per channel it stops being about speed and becomes correctness:
+ * a canvas is 8-bit, so `getImageData` silently halves the precision of a
+ * 16-bit PNG. Calling this format "lossless" in the UI while quietly
+ * truncating it would be a lie, so those files skip the canvas entirely.
+ *
+ * Returns null when the fast general pipeline should be used instead.
+ */
+async function optimiseDeepPng(
+  file: File,
+  settings: EncodeSettings
+): Promise<{ buffer: ArrayBuffer; width: number; height: number } | null> {
+  if (settings.format !== "png" || settings.resizeEnabled) return null;
+  if (file.type !== "image/png") return null;
+
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const header = readPngHeader(bytes);
+  if (!header || header.bitDepth !== 16) return null;
+
+  const mod = await loadOxipng();
+  const out = mod.optimise(bytes, oxipngLevel(settings.effort), false, true);
+  return {
+    buffer: out.buffer as ArrayBuffer,
+    width: header.width,
+    height: header.height,
+  };
+}
+
 async function compress(request: CompressRequest): Promise<CompressResponse> {
   const started = performance.now();
   const { id, file, settings } = request;
 
   let bitmap: ImageBitmap | null = null;
   try {
+    const direct = await optimiseDeepPng(file, settings);
+    if (direct) {
+      const meta = FORMATS.png;
+      return {
+        id,
+        ok: true,
+        buffer: direct.buffer,
+        mime: meta.mime,
+        extension: meta.extension,
+        width: direct.width,
+        height: direct.height,
+        sourceWidth: direct.width,
+        sourceHeight: direct.height,
+        durationMs: Math.round(performance.now() - started),
+      };
+    }
+
     bitmap = await createImageBitmap(file, {
       imageOrientation: "from-image",
       colorSpaceConversion: "default",

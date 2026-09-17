@@ -111,6 +111,34 @@ parallelism costs more memory than it buys in throughput.
 Changing a setting bumps a generation counter and re-encodes everything;
 results that land from a superseded generation are discarded.
 
+### PNG levels are not monotonic
+
+OxiPNG's effort levels do not trade time for size in a straight line. Measured
+on a 2400×1600 PNG:
+
+| Level | Output  | Time  |
+| ----- | ------- | ----- |
+| 1     | 2.05 MB | 1.4 s |
+| 2     | 1.77 MB | 3.4 s |
+| 3     | 1.80 MB | 8.5 s |
+
+Level 3 costs 2.5× level 2 and comes out **larger**. The effort slider maps
+through a measured lookup table rather than arithmetic, so the default lands on
+2 rather than 3.
+
+### 16-bit PNGs bypass the canvas
+
+The pipeline normally decodes with `createImageBitmap` and reads pixels back
+through a canvas, which is 8 bits per channel. That silently halves the
+precision of a 16-bit PNG — unacceptable for a format the UI labels lossless.
+Those files are handed to OxiPNG as their original bytes instead.
+
+Deliberately narrow: routing *every* PNG through OxiPNG's own decoder is
+slower (3.9 s vs 3.4 s), because it decodes in wasm rather than reusing the
+browser's native decoder, and the result is identical. Enabling resize still
+forces the canvas path, since resizing needs one; a 16-bit source will be 8-bit
+on the way out in that case.
+
 ### Codec loading
 
 AVIF's binary is ~3.5 MB, and it used to be downloaded and compiled *inside*

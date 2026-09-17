@@ -1,0 +1,26 @@
+Halve PNG encode time by fixing the effort-to-level mapping
+
+OxiPNG's levels do not trade time for size monotonically. Measured on a
+2400x1600 PNG:
+
+  level 1 -> 2.05 MB in 1.4s
+  level 2 -> 1.77 MB in 3.4s
+  level 3 -> 1.80 MB in 8.5s
+
+Level 3 costs 2.5x level 2 and comes out larger, and the default effort mapped
+straight onto it. Effort now maps through a measured lookup table instead of
+arithmetic, so the default lands on 2: PNG at default settings goes from 8.5s
+to ~3.5s and gets slightly smaller at the same time.
+
+Also send 16-bit PNGs directly to OxiPNG rather than through the canvas. The
+normal path reads pixels back via getImageData, which is 8 bits per channel and
+silently halves the precision of a 16-bit source -- not something this app
+should do while calling the format lossless. Verified against a hand-built
+16-bit PNG: the direct path keeps bit depth 16, the canvas path truncates to 8.
+
+Kept deliberately narrow. Routing every PNG through OxiPNG's own decoder was
+the obvious generalisation and measured slower (3.9s vs 3.4s), because it
+decodes in wasm instead of reusing the browser's native decoder, for an
+identical result. Resize still forces the canvas path, since resizing needs one.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
