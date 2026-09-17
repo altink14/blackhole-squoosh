@@ -98,9 +98,11 @@ close to its worst case at speed 6, and it is the only one of the four with no
 cheap way to give up on a region. Benchmark against images that look like
 yours, not against a gradient or a noise field.
 
-AVIF's ~9 s is the cost of running single-threaded (see below). Lower the
-effort slider, which maps straight to libavif's speed parameter, if encode
-latency matters more than the last few kilobytes.
+Encode time swings hard on content as well as size. The same 2400×1600 frame
+built from many overlapping translucent gradients takes AVIF ~6 s instead of
+~1.4 s, because there is far more low-contrast detail for it to chase. Effort
+is the direct lever: it maps straight to libavif's speed parameter, and
+dropping it to 0 takes that same image to ~350 ms for roughly 40% more bytes.
 
 `lib/compressor.ts` keeps a small pool of these workers. The pool is
 deliberately narrow — each worker holds its own codec heaps, so wide
@@ -109,14 +111,36 @@ parallelism costs more memory than it buys in throughput.
 Changing a setting bumps a generation counter and re-encodes everything;
 results that land from a superseded generation are discarded.
 
-### Threading
+### Codec loading
 
-The codecs ship both single- and multi-threaded builds. The multi-threaded
-paths require `SharedArrayBuffer`, which requires cross-origin isolation
-(`COOP`/`COEP`). Those headers are deliberately **not** set, so `wasm-feature-detect`
-reports no thread support and the single-threaded codecs are used. This keeps
-the app free of the cross-origin isolation constraints; the cost is slower AVIF
-encoding at high effort.
+AVIF's binary is ~3.5 MB, and it used to be downloaded and compiled *inside*
+the first encode, which made a first AVIF look like it took 9 s when the
+encode itself was under 2 s. Two things prevent that:
+
+- The selected codec is instantiated as soon as it is chosen, not on first use.
+- Once images are queued, the other codecs' binaries are pulled into cache in
+  the background via `WebAssembly.compileStreaming`, which fills the engine's
+  wasm code cache as well as the HTTP cache. Necessary because the format bar
+  only exists once there is something to compress, so warming on selection
+  alone always loses the race against the re-encode it triggers.
+
+### Threading (does not work — do not "fix" by adding COOP/COEP)
+
+The codecs ship multi-threaded builds, and jSquash selects them automatically
+whenever `SharedArrayBuffer` exists. Adding `COOP`/`COEP` headers is therefore
+enough to switch them on, and AVIF then **hangs forever**.
+
+At startup the multi-threaded module pre-allocates one pthread worker per core
+and blocks module readiness on a run dependency until every one reports back.
+From inside a nested worker — which is where the encode pipeline runs — they
+never do. It fails silently: no error, no rejected promise, and the wasm is
+never even requested, so the encode just never returns. Reproduced with the
+glue served as a real URL rather than a bundle chunk, and with
+`mainScriptUrlOrBlob` passed explicitly. The same factory resolves in ~60 ms
+when called on the main thread, so it is specific to the nested-worker context.
+
+`loadAvif` therefore pins the single-threaded build explicitly instead of
+feature-detecting. Leave it pinned unless the pool bootstrap is actually fixed.
 
 ## The renderer
 

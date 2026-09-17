@@ -1,10 +1,13 @@
 /// <reference lib="webworker" />
 
+import { defaultOptions as avifDefaults } from "@jsquash/avif/meta.js";
 import {
   FORMATS,
   type CompressRequest,
   type CompressResponse,
   type EncodeSettings,
+  type OutputFormat,
+  type WorkerRequest,
 } from "./codecs";
 
 // The .wasm binaries are copied out of node_modules into /public/codecs by
@@ -15,8 +18,8 @@ const locateFile = (path: string) => CODEC_BASE + path;
 
 type JpegModule = typeof import("@jsquash/jpeg/encode");
 type WebpModule = typeof import("@jsquash/webp/encode");
-type AvifModule = typeof import("@jsquash/avif/encode");
-type OxipngModule = typeof import("@jsquash/oxipng/optimise");
+type AvifModule = AvifEncoder;
+type OxipngModule = typeof import("@jsquash/oxipng/codec/pkg/squoosh_oxipng.js");
 
 let jpeg: Promise<JpegModule> | null = null;
 let webp: Promise<WebpModule> | null = null;
@@ -39,20 +42,95 @@ function loadWebp() {
   return webp;
 }
 
+interface AvifEncoder {
+  encode(
+    data: Uint8Array,
+    width: number,
+    height: number,
+    options: Record<string, unknown>
+  ): Uint8Array | null;
+}
+
+type AvifFactory = (options: {
+  locateFile: (path: string) => string;
+  mainScriptUrlOrBlob?: string;
+}) => Promise<AvifEncoder>;
+
+/**
+ * Loads libavif's emscripten glue from /codecs at runtime rather than letting
+ * the bundler inline it. Keeps ~1 MB of glue out of the client bundle, and the
+ * encoder is instantiated once per worker and reused.
+ *
+ * Deliberately the SINGLE-THREADED build, and deliberately not chosen by
+ * feature detection.
+ *
+ * The multi-threaded build does not work here. jSquash selects it whenever
+ * SharedArrayBuffer exists, so merely adding COOP/COEP headers to this app is
+ * enough to switch it on -- and it then hangs forever. At init, emscripten
+ * pre-allocates one pthread worker per core and blocks module readiness on a
+ * run dependency until every one reports back; from inside a nested worker
+ * (which is where this code runs) those workers never do. It fails silently:
+ * no error, no rejected promise, and the wasm is never even requested, so the
+ * encode simply never returns. Verified with the glue served as a real URL and
+ * with mainScriptUrlOrBlob passed explicitly; the same factory resolves in
+ * ~60ms when called on the main thread.
+ *
+ * If cross-origin isolation is ever wanted here, this function must keep
+ * pinning the ST build or AVIF will break.
+ */
 function loadAvif() {
-  avif ??= import("@jsquash/avif/encode").then(async (mod) => {
-    await mod.init({ locateFile });
-    return mod;
-  });
+  avif ??= (async () => {
+    const imported = (await import(
+      /* webpackIgnore: true */ `${CODEC_BASE}avif_enc.js`
+    )) as { default: AvifFactory };
+    return imported.default({ locateFile });
+  })();
   return avif;
 }
 
+/**
+ * Loads OxiPNG's single-threaded build directly rather than through
+ * `@jsquash/oxipng/optimise`.
+ *
+ * That wrapper picks between the single- and multi-threaded builds at runtime
+ * based on SharedArrayBuffer availability, but takes one wasm URL for both.
+ * Once the page became cross-origin isolated it would select the parallel
+ * build and hand it the single-threaded binary, which fails on mismatched
+ * wasm-bindgen imports. Pinning the path keeps PNG deterministic; the parallel
+ * build additionally needs its wasm-bindgen-rayon worker snippets served,
+ * which is a separate piece of work.
+ */
 function loadOxipng() {
-  oxipng ??= import("@jsquash/oxipng/optimise").then(async (mod) => {
-    await mod.init(`${CODEC_BASE}squoosh_oxipng_bg.wasm`);
-    return mod;
-  });
+  oxipng ??= import("@jsquash/oxipng/codec/pkg/squoosh_oxipng.js").then(
+    async (mod) => {
+      await mod.default(`${CODEC_BASE}squoosh_oxipng_bg.wasm`);
+      return mod;
+    }
+  );
   return oxipng;
+}
+
+/** Instantiates a codec ahead of first use so the encode is not waiting on it. */
+async function warm(format: OutputFormat) {
+  try {
+    switch (format) {
+      case "jpeg":
+        await loadJpeg();
+        break;
+      case "webp":
+        await loadWebp();
+        break;
+      case "avif":
+        await loadAvif();
+        break;
+      case "png":
+        await loadOxipng();
+        break;
+    }
+  } catch {
+    // A failed warm-up is not an error worth surfacing: the encode path will
+    // retry the load and report properly if it genuinely cannot start.
+  }
 }
 
 function targetSize(
@@ -136,18 +214,31 @@ async function encode(
     }
     case "avif": {
       const mod = await loadAvif();
-      return mod.default(data, {
-        quality,
-        speed: Math.min(10, Math.max(0, 10 - effort)),
-      });
+      const out = mod.encode(
+        new Uint8Array(data.data.buffer),
+        data.width,
+        data.height,
+        {
+          ...avifDefaults,
+          quality,
+          speed: Math.min(10, Math.max(0, 10 - effort)),
+        }
+      );
+      if (!out) throw new Error("AVIF encoding failed");
+      return out.buffer as ArrayBuffer;
     }
     case "png": {
       const mod = await loadOxipng();
-      return mod.default(data, {
-        level: Math.min(6, Math.max(1, Math.round(1 + effort * 0.5))),
-        interlace: false,
-        optimiseAlpha: true,
-      });
+      const level = Math.min(6, Math.max(1, Math.round(1 + effort * 0.5)));
+      const out = mod.optimise_raw(
+        data.data,
+        data.width,
+        data.height,
+        level,
+        false,
+        true
+      );
+      return out.buffer as ArrayBuffer;
     }
   }
 }
@@ -197,8 +288,15 @@ async function compress(request: CompressRequest): Promise<CompressResponse> {
   }
 }
 
-self.addEventListener("message", (event: MessageEvent<CompressRequest>) => {
-  void compress(event.data).then((response) => {
+self.addEventListener("message", (event: MessageEvent<WorkerRequest>) => {
+  const request = event.data;
+
+  if (request.kind === "warm") {
+    void warm(request.format);
+    return;
+  }
+
+  void compress(request).then((response) => {
     if (response.ok) {
       (self as unknown as Worker).postMessage(response, [response.buffer]);
     } else {

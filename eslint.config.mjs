@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Codec binaries and emscripten glue staged out of node_modules by
+    // scripts/copy-codecs.mjs. Generated, vendored, and not ours to lint.
+    "public/codecs/**",
   ]),
 ]);
 

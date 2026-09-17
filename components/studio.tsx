@@ -13,6 +13,8 @@ import { SettingsBar } from "@/components/settings-bar";
 import {
   ACCEPTED_TYPES,
   DEFAULT_SETTINGS,
+  FORMAT_ORDER,
+  prefetchCodec,
   renameTo,
   type EncodeSettings,
 } from "@/lib/codecs";
@@ -177,6 +179,27 @@ export function Studio() {
     },
     [process]
   );
+
+  // Instantiate the selected codec ahead of the first encode instead of inside
+  // it. AVIF's binary is ~3.5 MB, which used to be downloaded and compiled
+  // while the user waited on their first image.
+  useEffect(() => {
+    getPool().warm(settings.format);
+  }, [settings.format, getPool]);
+
+  // Once there is something to compress, quietly pull the other codecs into the
+  // HTTP cache. Comparing formats is the whole point of the tool, and the
+  // format bar does not exist until images are queued, so warming on selection
+  // alone always loses the race against the first encode.
+  const prefetchedRef = useRef(false);
+  useEffect(() => {
+    if (items.length === 0 || prefetchedRef.current) return;
+    prefetchedRef.current = true;
+    const handle = setTimeout(() => {
+      for (const format of FORMAT_ORDER) prefetchCodec(format);
+    }, 1200);
+    return () => clearTimeout(handle);
+  }, [items.length]);
 
   // Re-encode everything when the settings change, debounced so dragging a
   // slider does not queue a job per pixel of travel.

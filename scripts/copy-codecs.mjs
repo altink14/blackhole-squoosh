@@ -16,6 +16,7 @@ const BINARIES = [
   ["@jsquash/webp", "codec/enc/webp_enc.wasm"],
   ["@jsquash/webp", "codec/enc/webp_enc_simd.wasm"],
   ["@jsquash/avif", "codec/enc/avif_enc.wasm"],
+  ["@jsquash/avif", "codec/enc/avif_enc.js"],
   ["@jsquash/oxipng", "codec/pkg/squoosh_oxipng_bg.wasm"],
 ];
 

@@ -1,0 +1,35 @@
+Stop paying AVIF's codec load inside the first encode
+
+A first AVIF appeared to take ~9s when the encode itself was under 2s. The
+difference was libavif's ~3.5MB binary being downloaded and compiled inside
+the encode, and being counted in the reported duration.
+
+- Instantiate the selected codec when it is selected, not on first use.
+- Once images are queued, pull the other codecs into cache in the background
+  with compileStreaming, which warms the engine's wasm code cache as well as
+  the HTTP cache. Needed because the format bar only exists once there is
+  something to compress, so warming on selection alone always loses the race
+  against the re-encode that selection triggers. A plain fetch was not enough:
+  a response whose body is never read can be cancelled before it completes.
+- Load libavif's glue from /codecs at runtime instead of bundling it, dropping
+  ~1MB of emscripten glue from the client bundle.
+
+Threading was attempted and does not work. jSquash selects the multi-threaded
+codecs whenever SharedArrayBuffer exists, so adding COOP/COEP is enough to
+enable them -- and AVIF then hangs forever. The MT module pre-allocates one
+pthread worker per core at init and blocks readiness until all report back;
+from inside a nested worker they never do, silently, without even requesting
+its wasm. Verified with the glue served as a real URL and with
+mainScriptUrlOrBlob passed explicitly; the same factory resolves in ~60ms on
+the main thread. loadAvif now pins the single-threaded build explicitly rather
+than feature-detecting, so enabling isolation later cannot silently break it.
+
+Also:
+- Pin OxiPNG to its single-threaded build for the same reason, driving the
+  wasm-bindgen module directly rather than through a wrapper that picks a
+  build at runtime but takes one wasm URL for both.
+- Show "collapsing..." while re-encoding instead of the previous result, which
+  reported a stale size as though it were the new one.
+- Stop linting the generated codec glue staged into public/codecs.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
