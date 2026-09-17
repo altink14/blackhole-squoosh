@@ -49,4 +49,6 @@ next-env.d.ts
 /start.log
 
 # scratch commit-message files
+/.cmsg
 /.cm.tmp
+/.commit-msg*

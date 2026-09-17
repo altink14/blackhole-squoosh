@@ -454,51 +454,56 @@ export function Studio() {
             </p>
           </section>
         ) : (
-          <section className="grid flex-1 place-items-center px-6 pb-16">
-            <div className="flex flex-col items-center gap-8">
-              <button
-                type="button"
-                onClick={() => inputRef.current?.click()}
+          // Absolutely positioned so the ring centres on the VIEWPORT rather
+          // than on the space left under the header -- otherwise it sits a
+          // half-header-height below the event horizon it is meant to trace.
+          // pointer-events are handed back to the button alone.
+          <section className="pointer-events-none absolute inset-0 grid place-items-center px-6">
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              className={cn(
+                "group pointer-events-auto relative grid size-[min(46vh,78vw,27rem)] place-items-center rounded-full",
+                "transition-transform duration-500 focus-visible:outline-none",
+                dragging ? "scale-[1.04]" : "hover:scale-[1.02]"
+              )}
+              aria-label="Choose images to compress"
+            >
+              <span
                 className={cn(
-                  "group relative grid size-[min(46vh,78vw,27rem)] place-items-center rounded-full",
-                  "transition-transform duration-500 focus-visible:outline-none",
-                  dragging ? "scale-[1.04]" : "hover:scale-[1.02]"
+                  "animate-horizon absolute inset-0 rounded-full border transition-colors duration-300",
+                  dragging
+                    ? "border-primary/80 shadow-[0_0_80px_-10px_var(--primary)]"
+                    : "border-white/20 group-hover:border-white/40",
+                  "group-focus-visible:border-primary"
                 )}
-                aria-label="Choose images to compress"
-              >
-                <span
-                  className={cn(
-                    "animate-horizon absolute inset-0 rounded-full border transition-colors duration-300",
-                    dragging
-                      ? "border-primary/80 shadow-[0_0_80px_-10px_var(--primary)]"
-                      : "border-white/20 group-hover:border-white/40",
-                    "group-focus-visible:border-primary"
-                  )}
-                />
-                {/* Sits above centre: the accretion disk crosses in front of
-                    the shadow at the equator, and centred text lands right on
-                    that bright band. */}
-                <span className="relative flex -translate-y-8 flex-col items-center gap-2 px-8 text-center sm:-translate-y-12">
-                  <span className="text-lg font-medium tracking-[0.18em] text-white uppercase [text-shadow:0_2px_20px_rgb(0_0_0/0.95)] sm:text-xl">
-                    {dragging ? "let go" : "drop images"}
-                  </span>
-                  <span className="max-w-[16rem] text-xs leading-relaxed text-white/60 [text-shadow:0_1px_14px_rgb(0_0_0/0.95)]">
-                    {dragging
-                      ? "They are not coming back the same size."
-                      : "or click to browse · paste works too"}
-                  </span>
+              />
+              {/* Sits above centre: the accretion disk crosses in front of
+                  the shadow at the equator, and centred text lands right on
+                  that bright band. */}
+              <span className="relative flex -translate-y-8 flex-col items-center gap-2 px-8 text-center sm:-translate-y-12">
+                <span className="text-lg font-medium tracking-[0.18em] text-white uppercase [text-shadow:0_2px_20px_rgb(0_0_0/0.95)] sm:text-xl">
+                  {dragging ? "let go" : "drop images"}
                 </span>
-              </button>
+                <span className="max-w-[16rem] text-xs leading-relaxed text-white/60 [text-shadow:0_1px_14px_rgb(0_0_0/0.95)]">
+                  {dragging
+                    ? "They are not coming back the same size."
+                    : "or click to browse · paste works too"}
+                </span>
+              </span>
+            </button>
 
-              <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] tracking-wide text-white/35 uppercase">
-                <span>MozJPEG</span>
-                <Dot />
-                <span>libwebp</span>
-                <Dot />
-                <span>libavif</span>
-                <Dot />
-                <span>OxiPNG</span>
-              </div>
+            {/* Pinned to the bottom edge, clear of the disk. Sitting a fixed
+                gap under the ring put it inside the glow, where it was
+                effectively invisible. */}
+            <div className="absolute inset-x-0 bottom-6 flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1.5 px-6 text-[9px] tracking-[0.12em] text-white/55 uppercase [text-shadow:0_1px_12px_rgb(0_0_0/0.95)] sm:bottom-8 sm:gap-x-3 sm:text-[11px] sm:tracking-[0.22em]">
+              <span>MozJPEG</span>
+              <Dot />
+              <span>libwebp</span>
+              <Dot />
+              <span>libavif</span>
+              <Dot />
+              <span>OxiPNG</span>
             </div>
           </section>
         )}
