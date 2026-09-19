@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="blackhole">
+  <defs>
+    <radialGradient id="halo" cx="50%" cy="50%" r="50%">
+      <stop offset="40%" stop-color="#ff7a1f" stop-opacity="0"/>
+      <stop offset="60%" stop-color="#ff7a1f" stop-opacity=".42"/>
+      <stop offset="80%" stop-color="#c2410c" stop-opacity=".20"/>
+      <stop offset="100%" stop-color="#7c2d12" stop-opacity="0"/>
+    </radialGradient>
+    <!-- Brighter on the left, echoing the Doppler beaming in the renderer. -->
+    <linearGradient id="ring" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#fff4da"/>
+      <stop offset="26%" stop-color="#ffc468"/>
+      <stop offset="62%" stop-color="#ff8a2b"/>
+      <stop offset="100%" stop-color="#df4e0e"/>
+    </linearGradient>
+    <!-- Only the outer thirds of this are ever visible; the middle sits behind
+         the ring and the shadow, so the bright stops are pushed outward. -->
+    <linearGradient id="disk" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ff8a2b" stop-opacity="0"/>
+      <stop offset="14%" stop-color="#ffdca8" stop-opacity="1"/>
+      <stop offset="40%" stop-color="#fff6e2" stop-opacity="1"/>
+      <stop offset="60%" stop-color="#fff6e2" stop-opacity="1"/>
+      <stop offset="86%" stop-color="#ffaa43" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#ff7a1f" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <circle cx="32" cy="32" r="32" fill="url(#halo)"/>
+  <rect x="0" y="29.9" width="64" height="4.2" rx="2.1" fill="url(#disk)"/>
+  <circle cx="32" cy="32" r="19.5" fill="none" stroke="url(#ring)" stroke-width="6"/>
+  <circle cx="32" cy="32" r="16.5" fill="#05050a"/>
+</svg>
